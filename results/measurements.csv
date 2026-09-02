@@ -1,0 +1,2 @@
+filename,area,perimeter,circularity,solidity,equivalent_diameter,texture_contrast,texture_entropy,calibrated,mm_per_pixel,warning
+synthetic_colony.png,1252.5213890982723,144.1909225668328,0.757040604533738,0.8882092724396995,39.934443319352006,0.008784481099896798,0.2343371228386492,True,0.1320035224572765,
