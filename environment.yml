@@ -1,0 +1,31 @@
+# Conda environment for colony-morphometrics.
+#
+# Developed and tested against Python 3.13 (no Python 3.11 / conda
+# installation was available in the development environment); pinned here
+# to 3.11 per the project's target runtime. The pip-pinned versions below
+# are the exact versions the test suite was validated against, installed
+# via `pip install -r` into a plain venv during development -- conda-forge
+# equivalents should work too, but pip is the reproducible path.
+#
+# Create with:   conda env create -f environment.yml
+# Activate with: conda activate colony-morphometrics
+#
+# No conda? Use a plain venv instead:
+#   python -m venv .venv
+#   .venv/Scripts/activate   (Windows)  or  source .venv/bin/activate  (macOS/Linux)
+#   pip install -r requirements.txt
+name: colony-morphometrics
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - numpy==2.5.2
+      - scipy==1.18.1
+      - scikit-image==0.26.0
+      - opencv-python-headless==5.0.0.93
+      - matplotlib==3.11.1
+      - pandas==3.0.5
+      - pillow==12.3.0
+      - pytest==9.1.1
