@@ -1,4 +1,4 @@
-# Conda environment for colony-morphometrics.
+# Conda environment for BiofilmColony-morphometrics.
 #
 # Developed and tested against Python 3.13 (no Python 3.11 / conda
 # installation was available in the development environment); pinned here
@@ -8,13 +8,13 @@
 # equivalents should work too, but pip is the reproducible path.
 #
 # Create with:   conda env create -f environment.yml
-# Activate with: conda activate colony-morphometrics
+# Activate with: conda activate BiofilmColony-morphometrics
 #
 # No conda? Use a plain venv instead:
 #   python -m venv .venv
 #   .venv/Scripts/activate   (Windows)  or  source .venv/bin/activate  (macOS/Linux)
 #   pip install -r requirements.txt
-name: colony-morphometrics
+name: BiofilmColony-morphometrics
 channels:
   - conda-forge
 dependencies:

@@ -2,8 +2,8 @@
 
 A classical computer-vision pipeline that turns photographs of bacterial colony
 biofilms on agar plates into quantitative shape and texture measurements —
-automating an analysis I previously did by hand in ImageJ during my MSc
-research on *Bacillus subtilis* biofilm genetics.
+automating an analysis I previously did in ImageJ (using the Quant-it macro)
+during my MSc research on *Bacillus subtilis* biofilm genetics.
 
 ## The biological problem
 
@@ -24,11 +24,11 @@ whole folder of plates.
 
 ```bash
 git clone <this-repo>
-cd colony-morphometrics
+cd BiofilmColony-morphometrics
 
 # with conda
 conda env create -f environment.yml
-conda activate colony-morphometrics
+conda activate BiofilmColony-morphometrics
 
 # or with a plain venv
 python -m venv .venv
@@ -154,7 +154,8 @@ otherwise plain surface.
 
 Validated against 92 real plate photographs from my MSc *B. subtilis*
 biofilm work (stereo-microscope TIFFs, one colony per crop), each with a
-colony area previously measured by hand in ImageJ. Reprocessing that set
+colony area previously measured in ImageJ with the Quant-it macro.
+Reprocessing that set
 through `scripts/validate_against_manual.py` (with
 `--colony-brighter-than-background`, since these were imaged with the
 biofilm scattering light brightly against a dark background) gives:
@@ -167,13 +168,13 @@ biofilm scattering light brightly against a dark background) gives:
 |---|---|---|
 | ![Scatter plot of manual vs. automated colony area, r=0.952](docs/images/validation_scatter.png) | ![Bland-Altman plot of automated minus manual area against their mean](docs/images/validation_bland_altman.png) | ![Segmentation overlay on a real stereo-microscope biofilm photograph](docs/images/real_data_overlay_example.png) |
 
-Automated area tracks manual area closely (r = 0.952) but runs systematically
-smaller — the pipeline's threshold draws the colony boundary a little inside
-where a human tracing the same photo in ImageJ would put it, especially for
-larger, more diffuse colonies (the bias grows with colony size in the
-Bland-Altman plot). This is a genuine boundary-definition difference to keep
-in mind when comparing new automated measurements against historical manual
-ones, not a validation failure.
+Automated area tracks the Quant-it measurements closely (r = 0.952) but runs
+systematically smaller — this pipeline's threshold draws the colony boundary
+a little inside where Quant-it's ImageJ measurement would put it, especially
+for larger, more diffuse colonies (the bias grows with colony size in the
+Bland-Altman plot). This is a genuine boundary-definition difference between
+the two thresholding approaches to keep in mind when comparing new automated
+measurements against historical Quant-it ones, not a validation failure.
 
 7 of the 92 images (colonies with low colony/background contrast) produced
 no detectable mask at all with the default parameters and are included in
@@ -223,7 +224,7 @@ similarly-organised dataset.*
 ## Project structure
 
 ```
-colony-morphometrics/
+BiofilmColony-morphometrics/
 ├── src/
 │   ├── segment.py     # illumination correction, thresholding, colony mask
 │   ├── calibrate.py   # metadata + dish rim calibration, pixel -> mm
