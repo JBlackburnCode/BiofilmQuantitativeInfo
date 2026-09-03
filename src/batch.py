@@ -16,6 +16,7 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless-safe: batch runs must not require a display
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from src.calibrate import CalibrationResult, calibrate
@@ -35,7 +36,14 @@ METRIC_COLUMNS = [
     "texture_contrast",
     "texture_entropy",
 ]
-CSV_COLUMNS = ["filename", *METRIC_COLUMNS, "calibrated", "mm_per_pixel", "warning"]
+CSV_COLUMNS = [
+    "filename",
+    *METRIC_COLUMNS,
+    "calibrated",
+    "mm_per_pixel",
+    "calibration_source",
+    "warning",
+]
 
 
 def find_images(input_dir: Path) -> list[Path]:
@@ -56,6 +64,38 @@ def find_images(input_dir: Path) -> list[Path]:
     return sorted(p for p in input_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS)
 
 
+def _normalize_for_display(image: np.ndarray) -> np.ndarray:
+    """Rescale an image to floats in [0, 1] so `imshow` renders it correctly.
+
+    `load_image` preserves the source dtype: an 8-bit photograph is fine as
+    given, but scientific TIFFs are frequently 16-bit containers holding a
+    much narrower true range (e.g. a 12-bit sensor's 0-4095), which
+    matplotlib would otherwise clip to solid white. A 1st-99.5th percentile
+    stretch avoids a few hot or dead pixels compressing the real contrast
+    into a narrow band, at the cost of losing that same tiny fraction of
+    outlier pixels to clipping in the *displayed* overlay -- segmentation
+    itself is unaffected, since it runs on `segment.to_grayscale`'s own
+    conversion, not this display copy.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        RGB image, shape (H, W, 3), as returned by `segment.load_image`.
+
+    Returns
+    -------
+    np.ndarray
+        Image rescaled to float64 in [0, 1], same shape as `image`.
+    """
+    if image.dtype == np.uint8:
+        return image
+    image = image.astype(np.float64)
+    low, high = np.percentile(image, (1, 99.5))
+    if high <= low:
+        return np.zeros_like(image)
+    return np.clip((image - low) / (high - low), 0.0, 1.0)
+
+
 def save_overlay(
     image,
     colony_mask,
@@ -72,7 +112,8 @@ def save_overlay(
         Boolean colony mask.
     calibration : CalibrationResult
         Output of `calibrate.calibrate`; the dish rim circle is only drawn
-        if calibration succeeded.
+        if calibration succeeded via dish rim detection (`source == "dish_rim"`) --
+        metadata-sourced calibration carries no dish geometry to draw.
     output_path : Path
         Where to write the overlay PNG.
     """
@@ -101,12 +142,13 @@ def draw_overlay_on_axes(ax, image, colony_mask, calibration: CalibrationResult)
         Boolean colony mask.
     calibration : CalibrationResult
         Output of `calibrate.calibrate`; the dish rim circle is only drawn
-        if calibration succeeded.
+        if calibration succeeded via dish rim detection (`source == "dish_rim"`) --
+        metadata-sourced calibration carries no dish geometry to draw.
     """
-    ax.imshow(image)
+    ax.imshow(_normalize_for_display(image))
     if colony_mask.any():
         ax.contour(colony_mask, colors="lime", linewidths=2)
-    if calibration.calibrated:
+    if calibration.source == "dish_rim":
         rim = plt.Circle(
             calibration.dish_center,
             calibration.dish_radius_px,
@@ -158,11 +200,12 @@ def process_image(
 
     try:
         seg: SegmentationResult = segment_colony(image, **(segment_kwargs or {}))
-        cal: CalibrationResult = calibrate(image, dish_diameter_mm=dish_diameter_mm)
+        cal: CalibrationResult = calibrate(image, dish_diameter_mm=dish_diameter_mm, path=path)
         metrics = compute_all_metrics(seg.colony_mask, seg.gray, mm_per_pixel=cal.mm_per_pixel)
         row.update(metrics)
         row["calibrated"] = cal.calibrated
         row["mm_per_pixel"] = cal.mm_per_pixel
+        row["calibration_source"] = cal.source
 
         warning = cal.warning or ""
         if not seg.colony_mask.any():

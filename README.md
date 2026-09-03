@@ -16,8 +16,9 @@ structure. Comparing colony morphology across strains — wrinkling, margin
 shape, spreading area — is a standard low-cost readout for biofilm matrix
 function, normally scored by eye or measured colony-by-colony in ImageJ. This
 tool automates that measurement: segment the colony, calibrate pixels to
-millimetres from the dish itself, and compute the same shape descriptors
-consistently across a whole folder of plates.
+millimetres (from the dish rim, or from calibration already embedded in the
+image file), and compute the same shape descriptors consistently across a
+whole folder of plates.
 
 ## Installation
 
@@ -49,7 +50,30 @@ Writes `results/measurements.csv` (one row per image) and one annotated
 overlay per image to `results/overlays/`. A corrupt or unreadable file is
 logged and skipped — it never aborts the batch. Run `python -m src.cli --help`
 for tuning flags (`--threshold-offset`, `--min-object-size`,
-`--morph-kernel-size`).
+`--morph-kernel-size`, `--colony-brighter-than-background`).
+
+**Calibration** tries two sources, in order:
+
+1. **Embedded metadata** — if the source TIFF carries an ImageJ-format pixel
+   size (`XResolution`/`YResolution` + a `unit=` field in
+   `ImageDescription`, as written by ImageJ/Fiji or exported from
+   microscope acquisition software), that calibration is used directly.
+   This is the only option that works for photographs cropped to a single
+   colony, e.g. several biofilms plated and imaged separately on the same
+   dish, where the dish rim isn't in frame.
+2. **Dish rim detection** — otherwise, falls back to locating the Petri
+   dish rim via Hough circle transform and `--dish-diameter`, which needs
+   the whole dish visible in the photograph.
+
+If neither succeeds, metrics are reported in pixel units with a warning
+rather than silently wrong millimetres.
+
+**Colony brighter or darker than the background?** The default assumes a
+colony darker than the surrounding agar (a typical top-lit photograph). Some
+imaging setups do the opposite — a biofilm that scatters/reflects light
+against a dark background reads as *brighter* than its surroundings. Pass
+`--colony-brighter-than-background` in that case; segmentation otherwise
+finds the background instead of the colony.
 
 **Review segmentation quality and correct outliers interactively:**
 
@@ -60,6 +84,22 @@ python -m src.gui
 Opens a window to browse a folder image-by-image, adjust segmentation
 sliders with the overlay updating live, save per-image parameter overrides
 for problem plates, and export the batch CSV once you're satisfied.
+
+**Validate against manual ImageJ measurements:**
+
+```bash
+python -m scripts.validate_against_manual \
+    --images-dir path/to/plates \
+    --manual-csv path/to/manual_measurements.csv \
+    --colony-brighter-than-background
+```
+
+Reprocesses a folder through the pipeline, matches each result to a manual
+measurement by filename, and reports Pearson correlation and Bland-Altman
+agreement (see Validation below). Written for this project's MSc dataset
+naming convention (`<prefix>.lif_-_<colony>_QBf.tif` ↔ CSV `Label`
+`<prefix>.lif - <colony>`); adjust `filename_to_label` in the script to
+match a different manual dataset's naming.
 
 **Use the pipeline directly in Python:**
 
@@ -112,14 +152,46 @@ otherwise plain surface.
 
 ## Validation
 
-*Placeholder — to be filled in with a real comparison.* The plan: reprocess
-the plate photographs originally measured by hand in ImageJ during my MSc,
-run them through this pipeline, and report agreement (e.g. Bland-Altman plot
-or Pearson correlation) between manual and automated area/diameter
-measurements. Circularity and texture metrics have no direct manual
-equivalent from that dataset, so those would be validated qualitatively —
-checking that matrix mutants and wild-type separate in the expected
-direction.
+Validated against 92 real plate photographs from my MSc *B. subtilis*
+biofilm work (stereo-microscope TIFFs, one colony per crop), each with a
+colony area previously measured by hand in ImageJ. Reprocessing that set
+through `scripts/validate_against_manual.py` (with
+`--colony-brighter-than-background`, since these were imaged with the
+biofilm scattering light brightly against a dark background) gives:
+
+| n | Pearson r | Mean bias | 95% limits of agreement | RMSE |
+|---|---|---|---|---|
+| 92 | 0.952 | −15.8 mm² (−37%) | [−39.2, +7.6] mm² | 19.8 mm² |
+
+| Manual vs. automated area | Bland-Altman agreement | Example real-data overlay |
+|---|---|---|
+| ![Scatter plot of manual vs. automated colony area, r=0.952](docs/images/validation_scatter.png) | ![Bland-Altman plot of automated minus manual area against their mean](docs/images/validation_bland_altman.png) | ![Segmentation overlay on a real stereo-microscope biofilm photograph](docs/images/real_data_overlay_example.png) |
+
+Automated area tracks manual area closely (r = 0.952) but runs systematically
+smaller — the pipeline's threshold draws the colony boundary a little inside
+where a human tracing the same photo in ImageJ would put it, especially for
+larger, more diffuse colonies (the bias grows with colony size in the
+Bland-Altman plot). This is a genuine boundary-definition difference to keep
+in mind when comparing new automated measurements against historical manual
+ones, not a validation failure.
+
+7 of the 92 images (colonies with low colony/background contrast) produced
+no detectable mask at all with the default parameters and are included in
+the stats above as automated area = 0 — the large cluster of outliers at the
+bottom of the Bland-Altman plot. This is exactly the failure mode the GUI's
+per-image parameter overrides exist for; it was not chased further here to
+avoid overfitting one global threshold to this particular batch. See
+`scripts/validate_against_manual.py`'s console output for the affected
+filenames.
+
+Circularity and texture metrics have no manual equivalent in this dataset,
+so those remain to be validated qualitatively — checking that matrix mutants
+and wild-type separate in the expected direction.
+
+*The real photographs and manual CSV used for this validation are personal
+MSc research data and are not included in this repository; the numbers above
+are reproducible against them but the script also works against any
+similarly-organised dataset.*
 
 ## Limitations and future work
 
@@ -137,11 +209,16 @@ direction.
   starting point, not a guarantee, for an arbitrary photo resolution/framing.
 - **Dish detection (Hough circle transform) is sensitivity-tuned, not
   bulletproof.** It can miss the rim on low-contrast or heavily reflective
-  dishes; when it does, the tool falls back to pixel units with a clear
-  warning rather than reporting wrong millimetres.
+  dishes; when it does (and there's no embedded metadata calibration either),
+  the tool falls back to pixel units with a clear warning rather than
+  reporting wrong millimetres.
+- **Low-contrast colonies can fail to segment entirely.** In the validation
+  set, 7/92 real photographs produced no detectable mask with default
+  parameters (see Validation above) — the GUI's per-image overrides exist
+  for exactly this case, but a folder of difficult images may need manual
+  review rather than a single unattended batch run.
 - **No run history.** Each batch run overwrites `results/measurements.csv`;
   there's no versioning of repeated runs over time.
-- **Validation is not yet done** — see the section above.
 
 ## Project structure
 
@@ -149,11 +226,13 @@ direction.
 colony-morphometrics/
 ├── src/
 │   ├── segment.py     # illumination correction, thresholding, colony mask
-│   ├── calibrate.py   # dish rim detection, pixel -> mm
+│   ├── calibrate.py   # metadata + dish rim calibration, pixel -> mm
 │   ├── metrics.py     # shape + texture measurements
 │   ├── batch.py       # folder -> CSV + overlays
 │   ├── cli.py         # command-line entry point
 │   └── gui.py         # Tkinter segmentation review tool
+├── scripts/
+│   └── validate_against_manual.py  # batch process + compare to manual CSV
 ├── tests/              # pytest, synthetic images generated with NumPy
 ├── data/example/       # synthetic demo plate + generator script
 ├── docs/images/        # README-embedded images
@@ -166,7 +245,8 @@ colony-morphometrics/
 pytest -v
 ```
 
-23 tests covering shape/texture metrics against synthetic masks with known
-geometry, calibration maths against a known dish radius, segmentation
-correctness on synthetic plates, and batch processing continuing past a
-deliberately corrupt file — no real photographs required.
+35 tests covering shape/texture metrics against synthetic masks with known
+geometry, calibration maths against a known dish radius and against
+synthetic ImageJ-format TIFF metadata, segmentation correctness on synthetic
+plates, and batch processing continuing past a deliberately corrupt file —
+no real photographs required.

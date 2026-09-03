@@ -48,6 +48,13 @@ def main() -> None:
         help="Radius of the morphological cleanup structuring element (default: 5).",
     )
     parser.add_argument(
+        "--colony-brighter-than-background",
+        action="store_true",
+        help="Set if the colony appears brighter than the surrounding agar/background "
+        "(e.g. a top-lit opaque biofilm imaged against a dark background), instead of "
+        "the default assumption that the colony is darker than its surroundings.",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Log per-image progress and warnings."
     )
     args = parser.parse_args()
@@ -57,6 +64,7 @@ def main() -> None:
     )
 
     segment_kwargs = {
+        "colony_darker_than_background": not args.colony_brighter_than_background,
         "threshold_offset": args.threshold_offset,
         "min_object_size": args.min_object_size,
         "morph_kernel_size": args.morph_kernel_size,

@@ -5,9 +5,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import tifffile
 from skimage import draw, io
 
-from src.batch import CSV_COLUMNS, find_images, run_batch
+from src.batch import CSV_COLUMNS, _normalize_for_display, find_images, run_batch
 
 
 def _make_plate_image() -> np.ndarray:
@@ -63,6 +64,26 @@ def test_batch_computes_metrics_for_valid_images(plates_dir, tmp_path):
     assert (good_rows["circularity"] > 0).all()
 
 
+def test_batch_records_metadata_calibration_source_for_calibrated_tiffs(tmp_path):
+    plates = tmp_path / "plates"
+    plates.mkdir()
+    tifffile.imwrite(
+        plates / "plate01.tif",
+        _make_plate_image(),
+        imagej=True,
+        resolution=(2, 2),
+        metadata={"unit": "um"},
+    )
+
+    output_dir = tmp_path / "results"
+    df = run_batch(plates, output_dir, dish_diameter_mm=90.0)
+
+    row = df[df["filename"] == "plate01.tif"].iloc[0]
+    assert row["calibrated"]
+    assert row["calibration_source"] == "metadata"
+    assert row["mm_per_pixel"] == pytest.approx(0.0005)
+
+
 def test_batch_writes_csv_with_expected_columns(plates_dir, tmp_path):
     output_dir = tmp_path / "results"
     run_batch(plates_dir, output_dir, dish_diameter_mm=90.0)
@@ -79,3 +100,25 @@ def test_batch_saves_overlays_only_for_processed_images(plates_dir, tmp_path):
 
     overlay_files = {p.name for p in (output_dir / "overlays").iterdir()}
     assert overlay_files == {"plate01_overlay.png", "plate02_overlay.png"}
+
+
+def test_normalize_for_display_leaves_uint8_images_unchanged():
+    image = np.array([[0, 128, 255]], dtype=np.uint8)
+    assert np.array_equal(_normalize_for_display(image), image)
+
+
+def test_normalize_for_display_stretches_narrow_high_bit_depth_range():
+    # A 16-bit image whose true range (0-4095) is far below the dtype's
+    # full range -- naively treating it as already-scaled floats would
+    # clip to solid white; it should be rescaled into [0, 1] instead.
+    image = np.array([[0, 2048, 4095]], dtype=np.uint16)
+    result = _normalize_for_display(image)
+    assert result.min() == pytest.approx(0.0)
+    assert result.max() == pytest.approx(1.0, abs=0.02)
+    assert result.max() <= 1.0
+
+
+def test_normalize_for_display_handles_constant_image_without_error():
+    image = np.full((5, 5), 1000, dtype=np.uint16)
+    result = _normalize_for_display(image)
+    assert np.all(result == 0.0)

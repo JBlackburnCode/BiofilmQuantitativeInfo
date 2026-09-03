@@ -1,10 +1,18 @@
 """Tests for src/calibrate.py using a synthetic plate photograph."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
+import tifffile
 from skimage import draw, filters
 
-from src.calibrate import calibrate, detect_dish_circle, mm_per_pixel_from_radius
+from src.calibrate import (
+    calibrate,
+    detect_dish_circle,
+    mm_per_pixel_from_radius,
+    mm_per_pixel_from_tiff_metadata,
+)
 
 
 @pytest.fixture
@@ -59,3 +67,82 @@ def test_calibrate_falls_back_gracefully_when_no_dish_present():
     assert not result.calibrated
     assert result.mm_per_pixel is None
     assert result.warning is not None
+    assert result.source is None
+
+
+def test_calibrate_records_dish_rim_as_the_source(synthetic_dish_image):
+    result = calibrate(synthetic_dish_image, dish_diameter_mm=90.0)
+    assert result.source == "dish_rim"
+
+
+def _write_imagej_tiff(path: Path, x_resolution: tuple[int, int], unit: str) -> None:
+    """Write a minimal ImageJ-format TIFF carrying a pixel-size calibration."""
+    array = np.zeros((10, 10), dtype=np.uint16)
+    tifffile.imwrite(
+        path,
+        array,
+        imagej=True,
+        resolution=(x_resolution, x_resolution),
+        metadata={"unit": unit},
+    )
+
+
+def test_mm_per_pixel_from_tiff_metadata_reads_micron_calibration(tmp_path):
+    # 2 pixels per micron -> each pixel is 0.5 micron -> 0.0005 mm.
+    path = tmp_path / "calibrated.tif"
+    _write_imagej_tiff(path, (2, 1), "um")
+    assert mm_per_pixel_from_tiff_metadata(path) == pytest.approx(0.0005)
+
+
+def test_mm_per_pixel_from_tiff_metadata_converts_other_units(tmp_path):
+    # 10 pixels per mm -> each pixel is 0.1 mm.
+    path = tmp_path / "calibrated_mm.tif"
+    _write_imagej_tiff(path, (10, 1), "mm")
+    assert mm_per_pixel_from_tiff_metadata(path) == pytest.approx(0.1)
+
+
+def test_mm_per_pixel_from_tiff_metadata_returns_none_for_uncalibrated_unit(tmp_path):
+    # ImageJ writes unit="pixel" when a file was never calibrated to a real
+    # physical unit -- that's not a usable scale factor.
+    path = tmp_path / "uncalibrated.tif"
+    _write_imagej_tiff(path, (1, 1), "pixel")
+    assert mm_per_pixel_from_tiff_metadata(path) is None
+
+
+def test_mm_per_pixel_from_tiff_metadata_returns_none_for_non_imagej_tiff(tmp_path):
+    # A plain TIFF's XResolution tag (e.g. a default 72 dpi some tool wrote)
+    # can't be distinguished from a genuine calibration without ImageJ's
+    # marker confirming a real pixel size was recorded.
+    path = tmp_path / "plain.tif"
+    tifffile.imwrite(path, np.zeros((10, 10), dtype=np.uint8), resolution=(72, 72))
+    assert mm_per_pixel_from_tiff_metadata(path) is None
+
+
+def test_mm_per_pixel_from_tiff_metadata_returns_none_for_missing_file(tmp_path):
+    assert mm_per_pixel_from_tiff_metadata(tmp_path / "does_not_exist.tif") is None
+
+
+def test_calibrate_prefers_metadata_over_dish_rim_when_path_given(
+    tmp_path, synthetic_dish_image
+):
+    path = tmp_path / "calibrated.tif"
+    _write_imagej_tiff(path, (2, 1), "um")
+
+    result = calibrate(synthetic_dish_image, dish_diameter_mm=90.0, path=path)
+
+    assert result.calibrated
+    assert result.source == "metadata"
+    assert result.mm_per_pixel == pytest.approx(0.0005)
+    # Metadata calibration carries no dish-rim geometry.
+    assert result.dish_center is None
+    assert result.dish_radius_px is None
+
+
+def test_calibrate_falls_back_to_dish_rim_when_metadata_missing(tmp_path, synthetic_dish_image):
+    path = tmp_path / "uncalibrated.tif"
+    _write_imagej_tiff(path, (1, 1), "pixel")
+
+    result = calibrate(synthetic_dish_image, dish_diameter_mm=90.0, path=path)
+
+    assert result.calibrated
+    assert result.source == "dish_rim"

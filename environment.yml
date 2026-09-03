@@ -28,4 +28,5 @@ dependencies:
       - matplotlib==3.11.1
       - pandas==3.0.5
       - pillow==12.3.0
+      - tifffile==2026.8.23
       - pytest==9.1.1

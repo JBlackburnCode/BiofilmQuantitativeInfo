@@ -46,6 +46,7 @@ class ColonyReviewApp:
         self.threshold_offset_var = tk.DoubleVar(value=DEFAULT_THRESHOLD_OFFSET)
         self.min_object_size_var = tk.IntVar(value=DEFAULT_MIN_OBJECT_SIZE)
         self.dish_diameter_var = tk.DoubleVar(value=DEFAULT_DISH_DIAMETER_MM)
+        self.colony_brighter_var = tk.BooleanVar(value=False)
 
         self._build_menu()
         self._build_layout()
@@ -116,6 +117,14 @@ class ColonyReviewApp:
         )
         self.min_size_scale.pack(fill=tk.X, pady=(6, 0))
 
+        self.colony_brighter_check = ttk.Checkbutton(
+            right,
+            text="Colony brighter than background",
+            variable=self.colony_brighter_var,
+            command=self._on_param_change,
+        )
+        self.colony_brighter_check.pack(anchor="w", pady=(6, 0))
+
         ttk.Label(right, text="Dish diameter (mm)").pack(anchor="w", pady=(10, 0))
         self.dish_entry = ttk.Entry(right, textvariable=self.dish_diameter_var, width=10)
         self.dish_entry.pack(anchor="w")
@@ -155,6 +164,7 @@ class ColonyReviewApp:
         for widget in (
             self.threshold_scale,
             self.min_size_scale,
+            self.colony_brighter_check,
             self.dish_entry,
             self.accept_button,
             self.batch_button,
@@ -211,6 +221,7 @@ class ColonyReviewApp:
         if override is not None:
             self.threshold_offset_var.set(override["threshold_offset"])
             self.min_object_size_var.set(override["min_object_size"])
+            self.colony_brighter_var.set(not override["colony_darker_than_background"])
         # else: sliders keep whatever value they already had, carried over
         # from the previous image -- usually a reasonable starting point
         # since lighting is similar across one batch.
@@ -228,6 +239,7 @@ class ColonyReviewApp:
         return {
             "threshold_offset": self.threshold_offset_var.get(),
             "min_object_size": int(self.min_object_size_var.get()),
+            "colony_darker_than_background": not self.colony_brighter_var.get(),
         }
 
     def _current_dish_diameter(self) -> float:
@@ -242,8 +254,9 @@ class ColonyReviewApp:
 
     def _recompute_and_redraw(self) -> None:
         image = self.current_image
+        path = self.image_paths[self.current_index]
         seg = segment_colony(image, **self._current_segment_kwargs())
-        cal = calibrate(image, dish_diameter_mm=self._current_dish_diameter())
+        cal = calibrate(image, dish_diameter_mm=self._current_dish_diameter(), path=path)
         metrics = compute_all_metrics(seg.colony_mask, seg.gray, mm_per_pixel=cal.mm_per_pixel)
 
         self.ax.clear()
@@ -264,7 +277,7 @@ class ColonyReviewApp:
             f"Texture contrast: {metrics['texture_contrast']:.2f}",
             f"Texture entropy: {metrics['texture_entropy']:.2f}",
             "",
-            f"Calibrated: {'yes' if cal.calibrated else 'no (px units)'}",
+            f"Calibrated: {'yes (' + cal.source + ')' if cal.calibrated else 'no (px units)'}",
         ]
         if cal.warning:
             lines.append(f"Warning: {cal.warning}")
