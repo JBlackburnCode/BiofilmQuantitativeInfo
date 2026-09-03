@@ -35,9 +35,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Requires Python 3.11+. (Developed and tested against Python 3.13, since no
-3.11 interpreter was available in the development environment — see
-[Limitations](#limitations-and-future-work).)
+Requires Python 3.11+.
 
 ## Usage
 
@@ -144,15 +142,6 @@ direction.
 - **No run history.** Each batch run overwrites `results/measurements.csv`;
   there's no versioning of repeated runs over time.
 - **Validation is not yet done** — see the section above.
-- Developed against Python 3.13 rather than the target 3.11 (no 3.11
-  interpreter was available locally); the codebase uses no 3.13-only syntax,
-  so 3.11 is expected to work but hasn't been directly verified.
-
-By design, this project deliberately does **not** include deep-learning
-segmentation, a web interface, time-lapse analysis, multi-species
-classification, or a plugin architecture. These were scoped out from the
-outset to keep the pipeline classical, inspectable, and finishable — not
-gaps that got missed.
 
 ## Project structure
 
