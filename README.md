@@ -181,9 +181,7 @@ no detectable mask at all with the default parameters and are included in
 the stats above as automated area = 0 — the large cluster of outliers at the
 bottom of the Bland-Altman plot. This is exactly the failure mode the GUI's
 per-image parameter overrides exist for; it was not chased further here to
-avoid overfitting one global threshold to this particular batch. See
-`scripts/validate_against_manual.py`'s console output for the affected
-filenames.
+avoid overfitting one global threshold to this particular batch.
 
 Circularity and texture metrics have no manual equivalent in this dataset,
 so those remain to be validated qualitatively — checking that matrix mutants
